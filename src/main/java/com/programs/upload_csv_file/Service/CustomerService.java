@@ -26,86 +26,42 @@ import java.util.Set;
 
 @Slf4j
 @Service
-@AllArgsConstructor
 @NoArgsConstructor
 public class CustomerService {
 
-    @Autowired
-    private CustomerRepo customerRepo;
+	@Autowired
+    private CsvConfig csvConfig;
+	
+	@Autowired
+	private CustomerRepo customerRepo;
+	
+	@Autowired
+	private PdfWriterService pdfWriterService;
+	
+	//String pdfFilePath="C:\\Users\\Abhishek\\Documents";
 
-    // Check if the file type is correct
-    public boolean isCsvPresent(MultipartFile file) {
-        return CsvConfig.TYPE.equals(file.getContentType());
-    }
+	public int saveCustomer(List<Customer> customers) {
+		int insertedCustomersCount = 0;
+		for (Customer customer : customers) {
+			if (customerRepo.findByPhone1(customer.getPhone1()).isEmpty()) {
+				try {
+					customerRepo.save(customer);
+					insertedCustomersCount++;
+					log.info("Customer saved: " + customer);
+				} catch (Exception e) {
+					log.error("Error saving customer: " + customer, e);
+				}
+			} else {
+				log.info("Customer with phone " + customer.getPhone1() + " already exists.");
+			}
+		}
+		return insertedCustomersCount;
+	}
 
-    @Transactional
-    public int processAndSaveCSV(MultipartFile file) throws IOException {
-        try (BufferedReader fileReader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"));
-             CSVParser csvParser = new CSVParser(fileReader,
-                     CSVFormat.DEFAULT.withHeader(CsvConfig.HEADERS).withFirstRecordAsHeader().withIgnoreHeaderCase().withTrim())) {
-
-            List<Customer> customers = parseCSVToCustomers(csvParser);
-            log.info("Parsed " + customers.size() + " customers from CSV.");
-       int   insertedCustomersCount=  saveCustomer(customers);
-       log.info("Inserted " + insertedCustomersCount + " new customers.");
-       return insertedCustomersCount;
-        }
-    }
-
-    private List<Customer> parseCSVToCustomers(CSVParser csvParser) {
-        List<Customer> customers = new ArrayList<>();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-
-        Set<String> processedPhoneNumbers = new HashSet<>();
-        for (CSVRecord csvRecord : csvParser) {
-            String phone1 = csvRecord.get("Phone 1");
-            log.debug("Processing record with phone1: " + phone1); // Debugging line
-
-            if (!processedPhoneNumbers.contains(phone1) && !customerRepo.findByPhone1(phone1).isPresent()) {
-                try {
-                    LocalDate subscriptionDate = LocalDate.parse(csvRecord.get("Subscription Date"), formatter);
-
-                    Customer customer = new Customer(
-                            csvRecord.get("Customer Id"),
-                            csvRecord.get("First Name"),
-                            csvRecord.get("Last Name"),
-                            csvRecord.get("Company"),
-                            csvRecord.get("City"),
-                            csvRecord.get("Country"),
-                            phone1,
-                            csvRecord.get("Phone 2"),
-                            csvRecord.get("Email"),
-                            subscriptionDate,
-                            csvRecord.get("Website")
-                    );
-                    customers.add(customer);
-                    processedPhoneNumbers.add(phone1);
-
-                    log.info("Customer parsed: " + customer);
-                } catch (Exception e) {
-                    log.error("Error parsing record: " + csvRecord, e);
-                }
-            }
-        }
-        return customers;
-    }
-
-
-    public int saveCustomer(List<Customer> customers) {
-        int insertedCustomersCount = 0;
-        for (Customer customer : customers) {
-            if (customerRepo.findByPhone1(customer.getPhone1()).isEmpty()) {
-                try {
-                    customerRepo.save(customer);
-                    insertedCustomersCount++;
-                    log.info("Customer saved: " + customer);
-                } catch (Exception e) {
-                    log.error("Error saving customer: " + customer, e);
-                }
-            } else {
-                log.info("Customer with phone " + customer.getPhone1() + " already exists.");
-            }
-        }
-        return insertedCustomersCount;
+	public void exportCustomerdataToPdf(String pdfFilePath) throws IOException {
+	    // Fetch all customers from the database
+    		List<Customer> customers = customerRepo.findAll();
+    		
+    		pdfWriterService.writeCustomerDataToPDF(customers, pdfFilePath);
     }
 }
